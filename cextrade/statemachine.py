@@ -309,18 +309,17 @@ class TradingStateMachine(StateMachine, Thread):
     def run(self):
         self.run_all()
 
-cex_client = cexio.Api("up103272129", "zv6NThLsvyqfOYrkpTLKgeqIwM", "F7uc46OlsC2TS6ROJDIqTKsGc")
-TT = 10
-machines = list()
+
+def main():
+    cex_client = cexio.Api("up103272129", "zv6NThLsvyqfOYrkpTLKgeqIwM", "F7uc46OlsC2TS6ROJDIqTKsGc")
+    TT = 10
+    machines = list()
+    machines.append(TradingStateMachine(cex_client, "XRP/USD", TT, first_threshold_gain=0.7))
+
+    for machine in machines:
+        machine.start()
+        time.sleep(1)
 
 
-machines.append(TradingStateMachine(cex_client, "XRP/USD", TT, first_threshold_gain=0.7))
-
-for machine in machines:
-    machine.start()
-    time.sleep(1)
-
-
-
-
-
+if __name__ == "__main__":
+    main()
