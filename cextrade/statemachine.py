@@ -4,10 +4,13 @@ from cextrade.trade import net_gain_rate_cryp_to_fiat, net_gain_rate_fiat_to_cry
 import time
 import cexio
 from threading import Thread
+import argparse
+import sys
 
+output_file = sys.stdout
 
 def frmt_print(string):
-    print(time.strftime("%d/%m/%Y %H:%M:%S") + " : " + string)
+    print(time.strftime("%d/%m/%Y %H:%M:%S") + " : " + string, file=output_file, flush=True)
 
 
 def selling_state_message(amount_cryp, rate, market, net_gain, state_name="SellingState"):
@@ -53,13 +56,13 @@ class StateMachine:
 
 class InitialState(State):
     def run(self):
-        print(self.context.current_state_message("InitialState"))
+        print(self.context.current_state_message("InitialState"), file=output_file, flush=True)
         self.context.set_balance()
         self.context.set_ask_bid()
         if self.context.now_selling_cryp:
-            print("Start by Selling Cryp")
+            print("Start by Selling Cryp", file=output_file, flush=True)
         else:
-            print("Start by Buying Cryp")
+            print("Start by Buying Cryp", file=output_file, flush=True)
 
     def next(self):
         if self.context.now_selling_cryp:
@@ -72,7 +75,7 @@ class InitialState(State):
 
 class InitialCrypSellState(State):
     def run(self):
-        print(self.context.current_state_message("InitialCrypSellState"))
+        print(self.context.current_state_message("InitialCrypSellState"), file=output_file, flush=True)
         self.context.set_time_step(self.context.time_step)
 
     def next(self):
@@ -83,7 +86,7 @@ class InitialCrypSellState(State):
 
 class InitialCrypBuyState(State):
     def run(self):
-        print(self.context.current_state_message("InitialCrypBuyState"))
+        print(self.context.current_state_message("InitialCrypBuyState"), file=output_file, flush=True)
         self.context.set_time_step(self.context.time_step)
 
     def next(self):
@@ -94,7 +97,7 @@ class InitialCrypBuyState(State):
 
 class FirstThresholdSellState(State):
     def run(self):
-        print(self.context.current_state_message("FirstThresholdSellState"))
+        print(self.context.current_state_message("FirstThresholdSellState"), file=output_file, flush=True)
 
     def next(self):
         if self.context.net_gain < self.context.first_threshold_gain:
@@ -107,7 +110,7 @@ class FirstThresholdSellState(State):
 
 class FirstThresholdBuyState(State):
     def run(self):
-        print(self.context.current_state_message("FirstThresholdBuyState"))
+        print(self.context.current_state_message("FirstThresholdBuyState"), file=output_file, flush=True)
 
     def next(self):
         if self.context.net_gain < self.context.first_threshold_gain:
@@ -120,10 +123,10 @@ class FirstThresholdBuyState(State):
 
 class SellingState(State):
     def run(self):
-        print(self.context.current_state_message("SellingState"))
+        print(self.context.current_state_message("SellingState"), file=output_file)
         print(selling_state_message(self.context.cryp_balance, self.context.cryp_fiat_bid, self.context.market,
-                                    self.context.net_gain))
-        ret = self.context.sell_cryp(self.context.cryp_balance, self.context.cryp_fiat_bid)
+                                    self.context.net_gain), file=output_file, flush=True)
+        ret = self.context.sell_cryp(self.context.cryp_balance, self.context.cryp_fiat_bid, flush=True)
         self.context.set_balance()
         self.context.set_previous()
         if ret:
@@ -137,9 +140,9 @@ class SellingState(State):
 
 class BuyingState(State):
     def run(self):
-        print(self.context.current_state_message("BuyingState"))
+        print(self.context.current_state_message("BuyingState"), file=output_file, flush=True)
         print(buying_state_message(self.context.fiat_balance, self.context.cryp_fiat_ask, self.context.market,
-                                   self.context.net_gain))
+                                   self.context.net_gain), file=output_file, flush=True)
         ret = self.context.buy_cryp(self.context.fiat_balance*0.95, self.context.cryp_fiat_ask)
         self.context.set_balance()
         self.context.set_previous()
@@ -284,7 +287,7 @@ class TradingStateMachine(StateMachine, Thread):
 
     def sell_cryp(self, amount, rate):
         ret = self.cex_client.sell_limit_order(amount, rate, self.market)
-        print(ret)
+        print(ret, file=output_file, flush=True)
         if 'error' in ret:
             return False
         # print("Now selling", amount, "at rate", rate, "on maket", self.market)
@@ -293,7 +296,7 @@ class TradingStateMachine(StateMachine, Thread):
 
     def buy_cryp(self, price_fiat, rate):
         ret = self.cex_client.buy_limit_order(float(price_fiat/rate), rate, self.market)
-        print(ret)
+        print(ret, file=output_file, flush=True)
         if 'error' in ret:
             return False
         # print("Now buying", price_fiat/rate, "at rate", rate, "on market", self.market)
@@ -311,10 +314,26 @@ class TradingStateMachine(StateMachine, Thread):
 
 
 def main():
+    global output_file
+
+    parser = argparse.ArgumentParser(description="Run a crypto currency state machine based "
+                                                 "on a small variation strategy")
+
+    parser.add_argument('currency_pair',metavar="CUR_PAIR", help="Currency pair e.g. 'BTC/USD'. Check cex.io website to"
+                                                                 "know which are available")
+    parser.add_argument("--output", type=argparse.FileType('a'), metavar='OUTPUT_PATH',
+                        help="Output path. Default is stdout.", default=sys.stdout)
+    parser.add_argument("--timestep", type=int, metavar="STEP", default=10,
+                        help="time step in seconds between 2 states switch computation. Default is 10.")
+    parser.add_argument("--gain-threshold", type=float, metavar="GAIN", default=0.35,
+                        help="gain threshold (in percentage) to start sellling or buying. Default is 0.35%")
+
+    args = parser.parse_args()
+    output_file = args.output
     cex_client = cexio.Api("up103272129", "zv6NThLsvyqfOYrkpTLKgeqIwM", "F7uc46OlsC2TS6ROJDIqTKsGc")
-    TT = 10
     machines = list()
-    machines.append(TradingStateMachine(cex_client, "XRP/USD", TT, first_threshold_gain=0.7))
+    machines.append(TradingStateMachine(cex_client, args.currency_pair, args.timestep,
+                                        first_threshold_gain=args.gain_threshold))
 
     for machine in machines:
         machine.start()
